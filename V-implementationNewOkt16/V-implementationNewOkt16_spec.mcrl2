@@ -1,9 +1,7 @@
 act	Tx_SystemBoot, Rx_SystemBoot, C_SystemBoot,  % Initial action to start up the complete system. If a coordination center is live, its "Boot" Parameter is TRUE
 	DownloadApp; % Customer needs to download an app to subscribe to the delivery service
 	Tx_Subscribe, Rx_Subscribe, C_Subscribe: Nat; % Communication signal between a customer and the CCAssigner 
-	Tx_CustomerSum, Rx_CustomerSum, C_CustomerSum: Nat # Nat; % (Coordination Center ID # Number of subscribed customers) To relay information  of customers subscribed to a single coordination center from CC to delivery app
-	Tx_AssignCC, Rx_AssignCC, C_AssignCC:Nat;	% Communication signal between App and customer, to assign a coordination center to customer.
-	Tx_AddCustomer, Rx_AddCustomer, C_AddCustomer: Nat; % Communication signal from App to a coordination center to add a new customer
+	Tx_PlaceOrder, Rx_PlaceOrder, C_PlaceOrder: Nat; % Action to communicate an order from customer to coordination center
 
 
 map MaxCusNum: Nat;
@@ -13,37 +11,35 @@ eqn MaxCusNum = 5;
 proc
 	Boot = Tx_SystemBoot.Boot;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% The Coordination Center Controllers %%%%%%%%%%%%%%%%%%%%
-	CoordinationCenter(Boot: Bool, ID: Nat, SubscriberNum: Nat) = 
+	CoordinationCenter(Boot: Bool, ID: Nat, SubscriberNum: Nat, Subscribers: Set(Nat), OpenOrders: Set(Nat)) = 
 	
 	% A System boot action is required as initial action
-		(!Boot)  -> Rx_SystemBoot.CoordinationCenter(!Boot, ID, SubscriberNum) 
+		(!Boot)  -> Rx_SystemBoot.CoordinationCenter(!Boot, ID, SubscriberNum, Subscribers, OpenOrders) 
 
-	% These action can be performed once the system has booted
-		+ (Boot && SubscriberNum < MaxCusNum) -> sum x: Nat.Rx_AddCustomer(x).CoordinationCenter(Boot, ID, SubscriberNum + 1);
+	% These action can be performed once the system has booted:
+		+ (Boot) ->
+	% A New customer can be added to the coordination center if it has space
+			  ((SubscriberNum < MaxCusNum) -> sum x: Nat.Rx_Subscribe(x).CoordinationCenter(Boot, ID, SubscriberNum + 1,Subscribers + {x}, OpenOrders)
+	
+	% An order can be placed and handled by polling the customers of the control center
+			+ sum x: Nat. (x in Subscribers) -> Rx_PlaceOrder(x).CoordinationCenter(Boot, ID, SubscriberNum, Subscribers, OpenOrders + {x}));
+		
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% The Customer Controller %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	Customer(CusID: Nat, AssignedCC: Set(Nat)) = 
-
+	Customer(CusID: Nat, Member: Bool, OrderPlaced: Bool) =
 	% If a customer has not subscribed to the service yet, It needs to download the app and subscribe		
-		  (AssignedCC == {}) -> DownloadApp.Tx_Subscribe(CusID).sum x: Nat.Rx_AssignCC(x).Customer(CusID, {x});
+		  (!Member) -> DownloadApp.Tx_Subscribe(CusID).Customer(CusID, true, OrderPlaced)
 	% If a customer has already subscribed once, it can start making orders with the following actions
-		
+		+ (Member) -> Tx_PlaceOrder(CusID).Customer(CusID, Member, true);
 	
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% The Delivery App Controller %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% The DeliveryApp process polls the controll centers and assigns a control center to a customer 
-	DeliveryApp = sum x: Nat.Rx_Subscribe(x).Tx_AddCustomer(x).sum y: Nat.Tx_AssignCC(y).DeliveryApp;
 		
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-init allow({C_SystemBoot, DownloadApp, C_CustomerSum, C_Subscribe, C_AssignCC, C_AddCustomer},
-	 	 comm({Tx_SystemBoot  | Rx_SystemBoot  -> C_SystemBoot,
-			   Tx_Subscribe   | Rx_Subscribe   -> C_Subscribe,
-			   Tx_CustomerSum | Rx_CustomerSum -> C_CustomerSum,
-			   Tx_AssignCC    | Rx_AssignCC    -> C_AssignCC,
-			   Tx_AddCustomer | Rx_AddCustomer -> C_AddCustomer},
+init allow({C_SystemBoot, DownloadApp, C_Subscribe, C_PlaceOrder},
+	 	 comm({Tx_SystemBoot | Rx_SystemBoot -> C_SystemBoot,
+			   Tx_Subscribe  | Rx_Subscribe  -> C_Subscribe,
+			   Tx_PlaceOrder | Rx_PlaceOrder -> C_PlaceOrder},
 			Boot ||
-			DeliveryApp ||
-			CoordinationCenter(false, 0, 0) || 
-			Customer(0,{}) || Customer(1,{})));
+			CoordinationCenter(false, 0, 0, {}, {}) || 
+			Customer(0, false, false) || Customer(1, false, false)|| Customer(2, false, false)|| Customer(3, false, false)
+			));
