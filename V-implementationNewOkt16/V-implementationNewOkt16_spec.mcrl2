@@ -21,38 +21,42 @@ proc
 		+ (Boot) ->
 
 			% A New customer can be added to the coordination center if it has space
-			((SubscriberNum < MaxCusNum) -> sum x: Nat.Rx_Subscribe(x).CoordinationCenter(Boot, ID, SubscriberNum + 1,Subscribers + {x}, OpenOrders)
+			((SubscriberNum < MaxCusNum) -> sum x: Nat.Rx_Subscribe(x).CoordinationCenter(Boot, ID, SubscriberNum + 1,Subscribers + {x}, OpenOrders));
 	
 			% An order can be placed and handled by polling the customers of the control center
-			+ sum x: Nat. (x in Subscribers) -> Rx_PlaceOrder(x).
+			%+ sum x: Nat. (x in Subscribers) -> Rx_PlaceOrder(x).CoordinationCenter(Boot, ID, SubscriberNum, Subscribers, OpenOrders + {x})
 
 				% Poll the charging stations for the first available drone	
-				sum x,y: Nat. Rx_AvailableDrones(x,y)Tx_DispatchDrone()CoordinationCenter(Boot, ID, SubscriberNum, Subscribers, OpenOrders + {x}));
+			%	sum x,y: Nat. Rx_AvailableDrones(x,y)Tx_DispatchDrone()CoordinationCenter(Boot, ID, SubscriberNum, Subscribers, OpenOrders + {x}));
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% The Drone Controller %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-	Drone(ID: Nat, ChargerID: List[Nat], CustomerID: Nat) =
-		Rx_DispatchDrone()
+	Drone(ID: Nat, ChargerID: List(Nat), CustomerID: Set(Nat)) =
+		Rx_DispatchDrone(1).Drone(ID, ChargerID, CustomerID);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% The Charging Station Controller %%%%%%%%%%%%%%%%%%%%%%%%%
-	ChargingStation(ID: Nat, PlatformIDs: List[Nat], CustomerID: Nat) =
-		Rx_DispatchDrone()
+	ChargingStation(ID: Nat, PlatformIDs: List(Bool)) =
+		Rx_DispatchDrone(1).ChargingStation(ID, PlatformIDs);
 		
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% The Customer Controller %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	Customer(CusID: Nat, Member: Bool, OrderPlaced: Bool) =
-	% If a customer has not subscribed to the service yet, It needs to download the app and subscribe		
-		  (!Member) -> DownloadApp.Tx_Subscribe(CusID).Customer(CusID, true, OrderPlaced)
-	% If a customer has already subscribed once, it can start making orders with the following actions
+
+		% If a customer has not subscribed to the service yet, it needs to download the app and subscribe		
+		(!Member) -> DownloadApp.Tx_Subscribe(CusID).Customer(CusID, true, OrderPlaced)
+
+		% If a customer has already subscribed once, it can start making orders with the following actions
 		+ (Member) -> Tx_PlaceOrder(CusID).Customer(CusID, Member, true);
 	
 		
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-init allow({C_SystemBoot, DownloadApp, C_Subscribe, C_PlaceOrder},
+init allow({C_SystemBoot, DownloadApp, C_Subscribe, C_PlaceOrder, C_DispatchDrone},
 	 	 comm({Tx_SystemBoot    | Rx_SystemBoot    -> C_SystemBoot,
 			   Tx_Subscribe     | Rx_Subscribe     -> C_Subscribe,
-			   Tx_PlaceOrder    | Rx_PlaceOrder    -> C_PlaceOrder
+			   Tx_PlaceOrder    | Rx_PlaceOrder    -> C_PlaceOrder,
 			   Tx_DispatchDrone | Rx_DispatchDrone -> C_DispatchDrone},
 			Boot ||
-			CoordinationCenter(false, 0, 0, {}, {}) || 
+			CoordinationCenter(false, 0, 0, {}, {}) || CoordinationCenter(false, 1, 0, {}, {}) ||
+			Drone(0, [0,0], {}) ||
+			ChargingStation(0,[true]) ||
 			Customer(0, false, false) || Customer(1, false, false)|| Customer(2, false, false)|| Customer(3, false, false)
 			));
