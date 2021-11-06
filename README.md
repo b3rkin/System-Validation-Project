@@ -30,7 +30,7 @@ exists, and will not calculate a new output
 
 ## Functional overview
 
-Some introduction and general description is needed here maybe
+
 ### User input and Spark environment 
 The initial step  of the application is to obtain the sea level rise as input from the user. The input is taken as an 
 integer in meters. The type of input is guaranteed to be an integer and the program will prompt for an integer until 
